@@ -1,0 +1,81 @@
+{{- if .Values.remoteMonitoring.enabled }}
+{{- range $instance, $params := .Values.remoteMonitoring.instances }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $.Chart.Name }}-remote-monitoring-{{ $instance }}
+  labels:
+    app: {{ $.Chart.Name }}
+    component: remote-monitoring
+    instance: {{ $instance }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ $.Chart.Name }}
+      component: remote-monitoring
+      instance: {{ $instance }}
+  replicas: 1
+  serviceName: {{ printf "%s-%s" $.Chart.Name $instance }}
+{{- if $.Values.remoteMonitoring.persistentVolume.enable }}
+  volumeClaimTemplates:
+  - metadata:
+      name: agent-dir
+    spec:
+      storageClassName: {{ $.Values.remoteMonitoring.persistentVolume.storageClass | default "" | quote }}
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: {{ $.Values.remoteMonitoring.persistentVolume.size | quote | default "1Gi" }}
+{{- end }}
+  template:
+    metadata:
+      labels:
+        app: {{ $.Chart.Name }}
+        component: remote-monitoring
+        instance: {{ $instance }}
+    spec:
+      {{- with $.Values.remoteMonitoring.tolerations  }}
+      tolerations: {{ toYaml $.Values.remoteMonitoring.tolerations | nindent 6 }}
+      {{- end }}
+      {{- with $.Values.remoteMonitoring.nodeSelector }}
+      nodeSelector: {{ toYaml $.Values.remoteMonitoring.nodeSelector | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: agent
+        image: {{ $.Values.agent.image }}
+        env:
+        {{- include "agentEnvs" $ | nindent 8 }}
+        resources: {{ toYaml $.Values.remoteMonitoring.resources | nindent 10 }}
+        volumeMounts:
+        - name: agent-dir
+          mountPath: /usr/local/okagent
+{{- if or $.Values.remoteMonitoring.config $params.hostname }}
+        - name: agent-config
+          mountPath: /usr/local/okagent/etc
+          readOnly: true
+{{- end }}
+        - name: agent-config-plugins
+          mountPath: /usr/local/okagent/etc/config.d
+          readOnly: true
+      volumes:
+{{- if not $.Values.remoteMonitoring.persistentVolume.enabled }}
+      - name: agent-dir
+        emptyDir: {}
+{{- end }}
+{{- if or $.Values.remoteMonitoring.config $params.hostname }}
+      - name: agent-config
+        configMap:
+          name: {{ $.Chart.Name }}-remote-monitoring
+          defaultMode: 420
+          items:
+          - key: config.yaml
+            path: config.yaml
+{{- end }}
+      - name: agent-config-plugins
+        secret:
+          secretName: {{ printf "%s-remote-monitoring-%s" $.Chart.Name $instance }}
+          defaultMode: 420
+{{- end }}
+{{- end }}

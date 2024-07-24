@@ -1,0 +1,19 @@
+{{- $values := .Values | merge dict }}
+{{- if $values.remoteMonitoring.enabled }}
+{{- range $instance, $params := $values.remoteMonitoring.instances }}
+{{- $_ := set $params "config" (deepCopy ($values.remoteMonitoring.config | default dict)) }}
+{{- if $params.hostname }}
+{{ $_ := set $params.config "source_hostname" $params.hostname }}
+{{- end }}
+{{- if $params.config }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-remote-monitoring-%s" $.Chart.Name $instance }}
+data:
+  config.yaml: |
+    {{- toYaml $params.config | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}

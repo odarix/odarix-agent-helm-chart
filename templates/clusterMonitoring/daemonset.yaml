@@ -1,0 +1,82 @@
+{{- if .Values.clusterMonitoring.enabled }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ .Chart.Name }}
+  labels:
+    app: {{ .Chart.Name }}
+    component: cluster-monitoring
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Chart.Name }}
+      component: cluster-monitoring
+  template:
+    metadata:
+      labels:
+        app: {{ .Chart.Name }}
+        component: cluster-monitoring
+    spec:
+      serviceAccountName: {{ .Chart.Name }} 
+      hostNetwork: true
+      tolerations: {{ toYaml .Values.clusterMonitoring.tolerations | nindent 6 }}
+      containers:
+      - name: agent
+        image: {{ .Values.agent.image }}
+        securityContext:
+          privileged: true
+        env:
+        {{- include "agentEnvs" $ | nindent 8 }}
+        - name: AGENT_STATSD_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: K8S_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        {{- with .Values.clusterMonitoring.resources }}
+        resources: {{ toYaml . | nindent 10 }}
+        {{- end }}
+        volumeMounts:
+        - name: dockersocket
+          mountPath: /var/run/docker.sock
+          readOnly: true
+        - name: containerdsocket
+          mountPath: /run/containerd/containerd.sock
+          readOnly: true
+        - name: hostproc
+          mountPath: /host/proc
+          readOnly: true
+        - name: agent-dir
+          mountPath: /usr/local/okagent
+{{- if .Values.clusterMonitoring.config }}
+        - name: agent-config
+          mountPath: /usr/local/okagent/etc
+          readOnly: true
+{{- end }}
+      volumes:
+      - name: dockersocket
+        hostPath:
+          path: /var/run/docker.sock
+      - name: containerdsocket
+        hostPath:
+          path: /run/containerd/containerd.sock
+      - name: hostproc
+        hostPath:
+          path: /proc
+      - name: agent-dir
+        hostPath:
+          path: /usr/local/okagent
+          type: DirectoryOrCreate
+{{- if .Values.clusterMonitoring.config }}
+      - name: agent-config
+        configMap:
+          name: {{ .Chart.Name }}
+          defaultMode: 420
+          items:
+          - key: config.yaml
+            path: config.yaml
+{{- end }}
+{{- end }}

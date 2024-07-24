@@ -1,0 +1,12 @@
+{{- if .Values.clusterMonitoring.enabled }}
+{{- with .Values.clusterMonitoring.config }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $.Chart.Name }}
+data:
+  config.yaml: |
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{- end }}
